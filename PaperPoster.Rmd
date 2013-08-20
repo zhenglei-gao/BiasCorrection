@@ -1,0 +1,427 @@
+Lognormal Median Estimators
+==========================
+*Published to [RPubs](http://rpubs.com/Zhenglei/lognormalMedian)*
+
+
+```{r sourcefun,include=FALSE}
+#' Calculate the geomean to estimate the lognormal median.
+#'
+#' This function Calculate the geomean to estimate the lognormal
+#' median.
+#'
+#' @param x a vector.
+GM <- function(x){
+    exp(mean(log(x)))
+}
+#' Calculate the bias corrected geomean to estimate the lognormal
+#' median.
+#'
+#' This function Calculate the bias corrected geomean using the
+#' variance of the log of the samples, i.e., $\hat\sigma^2=1/(n-1)
+# \Sigma_i(\Log(X_i)-\hat\mu)^2$
+#'
+#' @param x a vector.
+BCGM <- function(x){
+y <- log(x)
+exp(mean(y)-var(y)/(2*length(y)))
+}
+#' Calculate the bias corrected geomean to estimate the lognormal
+#' median.
+#'
+#' This function Calculate the bias corrected geomean using
+#' $\hat\sigma^2=1/(n)\Sigma_i(\Log(X_i)-\hat\mu)^2$
+#'
+#' @param x a vector.
+CG <- function(x){
+y <- log(x)
+exp(mean(y)-var(y)/(2*length(y))*(length(y)-1)/length(y))
+}
+
+calCI <- function(x,alpha=0.05){
+  y <- log(x)
+  N <- length(x)
+  q <- 1-alpha/2
+  lower <- exp(mean(y)-qt(q,N-1)*sqrt(var(y)/N))
+  upper <- exp(mean(y)+qt(q,N-1)*sqrt(var(y)/N))
+  return(c(lower,upper,upper-lower))
+}
+## Define a function to draw samples from a lognormal distribution with the previous defined parameters $\mu$ and $\sigma$. 
+
+#' Calculate the geomean and the bias corrected geomean.
+#'
+#' This function Calculate the the geomean and the corrected geomean
+#' estimator of the simulated lognormal sample.
+#'
+#' @param n the number of lognormal samples to be drawn .
+#' @param mu the underlying normal mean of the lognormal.
+#' @param sigma the underlying normal variance of the lognormal.
+#'
+#' @return a vector contains the geomean and the corrected geomean estimator.
+simln <- function(n,mu,sigma,CI=FALSE)
+{
+    X <- rlnorm(n,mu,sigma)
+    Y <- 1/X
+    gm <- GM(X)
+    cg <- CG(X)
+    ##gmk <- log(2)/GM(log(2)*Y) #the same as GM(X)
+    ##cgk <- log(2)/CG(log(2)*Y)
+    cgk <- 1/CG(Y)
+    sm <- median(X)
+    if(CI==TRUE) ci <- calCI(X)
+    ##bcgm <- BCGM(X)
+    ##return(c(gm,cg,bcgm))
+    if(CI==FALSE) return(c(GM=gm,CG=cg,CGK=cgk,SM=sm)) else return(c(GM=gm,CG=cg,CGK=cgk,CI=ci[3],SM=sm))
+}
+#' Calculate the geomean and the bias corrected geomean.
+#'
+#' This function Calculate the the geomean and the corrected geomean
+#' estimator of the simulated lognormal samples.
+#'
+#' @param n the number of lognormal samples to be drawn .
+#' @param mu the underlying normal mean vector of the lognormal.
+#' @param sigma the underlying normal variance vector of the lognormal.
+#'
+#' @return a list contains the geomean and the corrected geomean estimator.
+simlnmat<- function(n,mu,sigma)
+{
+    nmu <- length(mu)
+    nsigma <- length(sigma)
+    gm <- matrix(NA,nmu,nsigma)
+    cg <- matrix(NA,nmu,nsigma)
+    for(i in 1:nmu){
+      for(j in 1:nsigma){
+         X <- rlnorm(n,mu[i],sigma[j])
+         gm[i,j] <- GM(X)
+         cg[i,j] <- CG(X)
+      }
+    }
+
+    return(list(gm=gm,cg=cg))
+}
+#' Calculate the geomean and the bias corrected geomean.
+#'
+#' This function Calculate the the geomean and the corrected geomean
+#' estimator of the simulated lognormal samples.
+#'
+#' @param n a vector of the number of lognormal samples to be drawn .
+#' @param mu the underlying normal mean vector of the lognormal.
+#' @param sigma the underlying normal fvariance vector of the lognormal.
+#'
+#' @return a list contains the geomean and the corrected geomean estimator.
+#' @example simln3d(n=c(10,100,1000),mu=c(log(50),log(10)),sigma=c(1,2,3,4))
+simln3d<- function(n,mu,sigma)
+{
+    nmu <- length(mu)
+    nsigma <- length(sigma)
+    gm <- matrix(NA,nmu,nsigma)
+    cg <- matrix(NA,nmu,nsigma)
+    #res <- list(length(n))
+    rescg <- array(NA, dim=c(nmu,nsigma,length(n)))
+    resgm <- array(NA, dim=c(nmu,nsigma,length(n)))
+    for(k in 1:length(n)){
+      for(i in 1:nmu){
+        for(j in 1:nsigma){
+          X <- rlnorm(n[k],mu[i],sigma[j])
+          gm[i,j] <- GM(X)
+          cg[i,j] <- CG(X)
+        }
+      }
+      resgm[, , k] <- gm
+      rescg[, , k] <- cg
+    }
+    return(list(gm=resgm,cg=rescg))
+}
+##########
+mse <- function(res,beta)
+{
+    mean((res-beta)^2)
+}
+rmse <- function(res,beta)
+{
+    sqrt(mean((res-beta)^2))
+}
+bias <- function(res,beta)
+{
+    mean(abs(res-beta))
+}
+```
+
+```{r single-estimate-ex,eval=FALSE,include=FALSE}
+require(plyr)
+mu <- log(50)
+cv <- 0.5
+sigma2 <- log(1+cv^2)
+sigma <- sqrt(log(1+cv^2))
+N <- 5
+lnvar <- (exp(sigma^2)-1)*exp(2*mu+sigma^2)
+lnsd <- sqrt(lnvar)
+res <- sapply(1:10,function(x){
+ssample <- rlnorm(N,mu,sigma)
+c(cv,ssample,GM(ssample),CG(ssample),1/(CG(1/ssample)),median(ssample))
+})
+res <- t(res)
+colnames(res)<-c("CV",paste("sample",1:N),"GM","CG","CGK","SM")
+write.csv(format(res,digits=4,nsmall=2),file=paste("singlesample_CV=",cv,".csv",sep=""))
+```
+
+
+
+```{r animfun,include=FALSE}
+anim_LNestimator <- function(mu=log(50),cv=2,N=c(5,10,20,100,300,1000),mcN=10000,xlim){
+  beta <- exp(mu) ## DT50
+  alpha <- log(2)/beta ## K
+  ## Either cv or N is a vector to show the changes as the sample size increases
+  ## 
+  allres <- NULL
+  if(missing(xlim)) xlim <- c(1e-6,200)
+  if(length(N)>1){
+    ## calculate sigma
+    sigma <- sqrt(log(1+cv^2))
+    for (n in N){
+      res <- sapply(1:mcN,function(i){simln(n,mu,sigma, CI=TRUE)})
+      ## if it is very long N, we keep only GM and CG.
+      plot(ecdf(res[1,]),col=1,lty=1,xlim=xlim,ylim=c(0,1),main=paste("ECDF of the LN median estimators,\n N=",n),xlab="Estimates")
+      lines(ecdf(res[2,]),col=2,lty=2)
+      lines(ecdf(res[3,]),col=3,lty=3)
+      abline(h=0.5,col="grey")
+      abline(v=50,col="grey")
+      legend("bottomright",c("GM","CG","CGK"),lty=1:3,col=1:3)
+      allres[[paste("N=",n,sep="")]]<-res
+      }
+    }else{
+      if(length(cv)>=1){
+        for (CV in cv){
+          sigma <- sqrt(log(1+CV^2))
+          res <- sapply(1:mcN,function(i){simln(N,mu,sigma, CI=TRUE)})
+          ## if it is very long N, we keep only GM and CG.
+          plot(ecdf(res[1,]),col=1,lty=1,xlim=xlim,ylim=c(0,1),main=paste("ECDF of the LN median estimators\n DT50=",exp(mu),", cv=",CV,", N=",N,sep=""),xlab="DT50 Estimates",ylab="Probability")
+          lines(ecdf(res[2,]),col=2,lty=2)
+          lines(ecdf(res[3,]),col=3,lty=3)
+          abline(h=0.5,col="grey")
+          abline(v=50,col="grey",untf=TRUE)
+          legend("bottomright",c("Geometric Mean","Bias Corrected Geomean","Corrected Geomean based on k"),lty=1:3,col=1:3,cex=1.3,lwd=2)
+          allres[[paste("CV=",CV,sep="")]] <- res 
+          }        
+        }else{
+          ## either both are one number or both are vectors
+          }
+      }
+  return(allres)
+  }
+
+underEstRate <- function(x,beta=(50)){
+  mcN <- length(x)
+  sum(x<beta)/mcN
+}
+
+greaterError <- function(x,beta,mcN=10000){
+  if(missing(mcN)) mcN <- ncol(x)
+  sum(abs(x["CG",]-beta)>abs(x["GM",]-beta))/mcN
+}
+
+diffCI <- function(x,beta=50,mcN=10000){
+  if(missing(mcN)) mcN <- ncol(x)
+  sum((abs(x["CG",]-x["GM",]))/x["CI",])/mcN
+}
+
+diffMedian <- function(x,beta=50,mcN=10000){
+  if(missing(mcN)) mcN <- ncol(x)
+  sum((abs(x["CG",]-x["GM",]))/beta)/mcN
+}
+
+summary_LNestimator <- function(allres,fun=median,main="",type=c("all","single","noSM"),trend=c("N","CV"),cv=2,N=c(5,10,20,100,300,1000),...){
+  type <- match.arg(type)
+  trend <- match.arg(trend)
+  if(type=="all"){
+    sumres <- lapply(allres,function(x){
+      as.data.frame(t(apply(x,1,fun)))
+      })
+    sumres <- ldply(sumres,data.frame)
+    ## rbind.fill(medianres)
+    if(trend=="N"){
+    matplot(N,sumres[,c(2:4,6)],type="l",log="x",xlab="log(N)",lwd=2,main=main,cex.lab=1.3,cex.main=1.5,cex.axis=1.1,...)
+    legend("topright",c("GM","CG","CGK","SM"),lty=1:4,col=1:4,cex=1.3)
+    }else{
+      matplot(cv,sumres[,c(2:4,6)],type="l",xlab="CV",lwd=2,main=main,cex.lab=1.3,cex.main=1.5,cex.axis=1.1,...)
+    legend("topleft",c("GM","CG","CGK","SM"),lty=1:4,col=1:4,cex=1.3)
+    }
+    }
+  if(type=="single"){
+    sumres <- lapply(allres,fun,...)
+    sumres <- unlist(sumres)
+    ## rbind.fill(medianres)
+  }
+  return(sumres)
+}
+
+
+plot_LNestimator <- function(allres,mu = log(50),cv=2,N=c(5,10,20,100,300,1000),select=1:4,plottype=rbind(c("density",TRUE),c("Median",TRUE),c("Mean",TRUE),c("ECDF",FALSE)),trend=c("N","CV"),...){
+  trend <- match.arg(trend)
+  medianres <- summary_LNestimator(allres,fun=median,main="Median of the estimators",ylab="Median of the Estimates",trend=trend,cv=cv,N=N)
+  abline(h=50,col="grey")
+  # dev.print(device=png,file="median_trend.png",units="in", width=11, height=8.5, res=300)
+  meanres <- summary_LNestimator(allres,fun=mean,main="Mean of the estimators",trend=trend,cv=cv,N=N)
+  sdres <- summary_LNestimator(allres,fun=function(x) sd(x)/exp(mu)*100,main="Standard Deviation/Population Median*100%",trend=trend,cv=cv,N=N)
+  biasres <- summary_LNestimator(allres,fun=function(x) mean(abs(x-exp(mu))/exp(mu)),main="Mean Absolute Error/Population Median",yaxt="n",ylim=c(0,1),trend=trend,cv=cv,N=N)
+  axis(2,  at=seq(0,1,by=.2), labels=paste(100*seq(0,1,by=.2), "%") )
+  deviationres <- summary_LNestimator(allres,fun=function(x) median(abs(x-exp(mu))/exp(mu)),main="Median Absolute Deviation/Population Median",yaxt="n",ylim=c(0,1),trend=trend,cv=cv,N=N)
+  axis(2,  at=seq(0,1,by=.2), labels=paste(100*seq(0,1,by=.2), "%") )
+  ## madres <- summary_LNestimator(allres,fun=function(x) median(abs(x-median(x))/exp(mu)),main="Median Absolute Deviation/Population Median")
+  mseres <- summary_LNestimator(allres,fun=function(x) mean((x-exp(mu))^2),main="MSE of the median estimators",ylab="MSE",trend=trend,cv=cv,N=N)
+  madres <- summary_LNestimator(allres,fun=function(x) mean(abs(x-exp(mu))),main="MAD of the median estimators",ylab="MAD",trend=trend,cv=cv,N=N)
+  ## mse2res <- summary_LNestimator(allres,fun=function(x) mean((x-mean(x))^2)+(mean(x-exp(mu)))^2,main="MSE of the median estimators")
+  underEst <- summary_LNestimator(allres,fun=underEstRate,ylab="underestimation Rate",trend=trend,cv=cv,N=N,ylim=c(0,1),yaxt="n")
+  axis(2,  at=seq(0,1,by=.2), labels=paste(100*seq(0,1,by=.2), "%") )
+  diffres <-  summary_LNestimator(allres,fun=diffCI,type="single",trend=trend,cv=cv,N=N)
+  #percent(diffres)
+  #diffMedianres <-  summary_LNestimator(allres,fun=diffMedian,type="single")
+  #percent(diffMedianres)
+  gerrres <- summary_LNestimator(allres,fun=greaterError,type="single",beta=50,cv=cv,N=N)
+  res <- list(medianres=medianres,meanres=meanres,sdres=sdres,biasres=biasres,deviationres=deviationres,mseres=mseres,madres=madres,underEst=underEst,diffoverCI=percent(diffres),gERR=percent(gerrres))
+  return(invisible(res))
+}
+percent <- function(x, digits = 2, format = "f", ...)
+{
+  paste(formatC(100 * x, format = format, digits = digits, ...), "%", sep = "")
+}
+
+bias_relation <- function(mu=log(50),cv=seq(0.1,2,by=0.1),N=5){
+  beta <- exp(mu) ## DT50
+  alpha <- log(2)/beta ## K
+  sigma <- sqrt(log(1+cv^2))
+  lnvar <- (exp(sigma^2)-1)*exp(2*mu+sigma^2)
+  lnsd <- sqrt(lnvar)
+  bias <- exp(mu+sigma^2/(2*N))-exp(mu)
+  CI <- exp(mu+pt(0.975,df=N-1)*sqrt(sigma^2/N))-exp(mu-pt(0.975,df=N-1)*sqrt(sigma^2/N))
+  par(mfrow=c(2,2))
+  plot(cv,lnsd,,type="l",xlab="CV",ylab="SD and Bias")
+  points(cv,bias,type="l",col=2,lty=2)
+  legend("topleft",c("sd","bias"),col=1:2,lty=1:2)
+  plot(cv,bias/CI,type="l")
+  plot(cv,bias/lnsd,type="l")
+  plot(lnsd,bias,type="l")
+  par(mfrow=c(1,1))
+  return(data.frame(cv,sd=lnsd,bias,CI,sigma))
+}
+bias_relation()
+dev.print(device=png,file="bias_relation.png",units="in", width=11, height=8.5, res=300)
+varGM <- function(mu,sigma,N){
+  exp(2*mu+2*sigma^2/N)-exp(2*mu+sigma^2/(N))
+}
+varCG <- function(mu,sigma,N){
+  ## exp(-sigma^2/N)*varGM(mu,sigma,N)
+  exp(2*mu+sigma^2/N)-exp(2*mu)
+}
+biasGM <- function(mu,sigma,N){
+  exp(mu+sigma^2/(2*N))-exp(mu)
+}
+#biasGM(mu=log(50),sigma=sqrt(log(1+cv^2)),N=5)/sqrt(varGM(mu,sigma,N))
+```
+
+Now the actual simulation:
+
+
+
+```{r samplesize,cache=TRUE,include=FALSE}
+
+poster <- anim_LNestimator(mu=log(50),cv=2,N=c(5),mcN=10000,xlim=c(20,100))
+res <- poster[[1]]
+plot(ecdf(res[1,]),col=1,lty=1,xlim=c(20,100),ylim=c(0,1),main=paste("ECDF of the LN median estimators\n DT50=",50,", cv=",2,", N=",5,sep=""),xlab="DT50 Estimates",ylab="Probability",cex.lab=1.3,cex.main=1.5,cex.axis=1.1)
+          lines(ecdf(res[2,]),col=2,lty=2)
+          lines(ecdf(res[3,]),col=3,lty=3)
+#lines(ecdf(res[5,]),col=4,lty=4)
+          abline(h=0.5,col="grey")
+          abline(v=50,col="grey",untf=TRUE)
+arrows(65,0.55,60,0.6,length=0.15,col=3,lwd=1.5)
+text(80,0.53,"Corrected Geomean based on k",cex=1.2,col=3)
+arrows(45,0.55,50,0.5,length=0.15,lwd=1.5)
+text(40,0.58,"Geometric Mean",cex=1.2)
+arrows(55,0.8,60,0.74,length=0.15,lwd=1.5,col=2)
+text(53,0.82,"Corrected Geomean",cex=1.2,col=2)
+#dev.print(pdf,"median-unbiasedness.pdf")
+dev.print(device=png,file="median_CDF.png",units="in", width=11, height=8.5, res=300)
+#######
+a <- density(res[2,])
+b <- density(res[1,])
+c <- density(res[3,])
+d <- density(res[5,])
+plot(a,col=2,lty=2,main=paste('N=',5),lwd=1.8,
+     xlab=paste('Median of GM:',
+                format(median(res[1,]),digits=5),
+                ';CG:',format(median(res[2,]),digits=5),';CGK:',format(median(res[3,]),digits=5),";SM:",format(median(res[5,]),digits=5)))
+lines(b,col=1,lty=1,lwd=1.8)
+lines(c,col=3,lty=3,lwd=1.8)
+lines(d,col=4,lty=4,lwd=1.5)
+#abline(v=mean(res[1,]),col=3)
+#abline(v=mean(res[2,]),col=4,lty=2)
+#abline(v=mean(res[3,]),col=7,lty=4)
+abline(v=50,col="grey",lty=1)
+
+legend('topright',c('GM','CG',"CGK","SM","50"),col=c(1:4,8),lty=c(1:4,1))
+dev.print(device=png,file="median_PDF.png",units="in", width=10, height=8.5, res=300)
+```
+
+```{r animationN,fig.show='animate',cache=TRUE,eval=TRUE}
+require(animation)
+# saveVideo({
+#     allres <- anim_LNestimator(mu=log(50),cv=2,N=c(5,10,20,100,300,1000),mcN=10000)
+# },
+#         video.name="anim_SampleSize.mp4")
+saveGIF({
+    allres <- anim_LNestimator(mu=log(50),cv=2,N=c(5,10,20,100,300,1000),mcN=100000)
+},
+        movie.name="anim_SampleSize.gif") 
+```
+ ![Animation SampleSize](anim_SampleSize.gif)
+
+```{r animationCV,fig.show='animate',cache=TRUE,include=FALSE,eval=TRUE}
+saveGIF({
+    allresCV <- anim_LNestimator(mu=log(50),cv=c(0.1,seq(0.2,2,by=0.2)),N=5,mcN=10000,xlim=c(0,200))
+},
+        movie.name="anim_CV.gif")
+```
+![Animation CV](anim_CV.gif)
+
+```{r trend,eval=TRUE}
+pdf("trendN.pdf")
+plot_LNestimator(allres,cv=2,N=c(5,10,20,100,300,1000),trend="N")
+dev.off()
+pdf("trendCV.pdf")
+plot_LNestimator(allresCV,cv=c(0.1,seq(0.2,2,by=0.2)),N=5,trend="CV")
+dev.off()
+```
+
+# Cross Validated Question:
+1. [The question](http://stats.stackexchange.com/questions/64587/when-to-use-sample-median-as-an-estimator-for-the-median-of-a-lognormal-distribu)
+
+2. [Does median-unbiased estimator minimize ]
+
+Monte Carlo evaluation of the proposed estimator demonstrates that...rel-
+ative efficiency gains increasing with the degree of endogeneity... We also evaluate the robustness of the median unbiased estimator to the choice of a loss function and find that it retains desirable characteristics under asymmetric losses, in contrast to
+some of the alternative procedures.
+
+Turning to empirical applicability we note that the property of median unbiased-
+ness characterizes estimators that are as likely to underestimate as to overestimate
+the true value, a highly desirable characteristic when any systematic biases affect
+the estimation. It is particularly relevant in forecasting, a setting in which median
+unbiased estimation results in same frequency of positive and negative forecast er-
+rors
+
+```{r stackexchange}
+
+
+```
+
+
+# Gather Materials
+
+* [Modes, Medians and Means: A Unifying Perspective](http://www.johnmyleswhite.com/notebook/2013/03/22/modes-medians-and-means-an-unifying-perspective/)
+
+* [Shiny Talk by Joe Chung](https://github.com/jcheng5/seattle-meetup)
+
+* [Writing docx files in R](https://github.com/davidgohel/R2DOCX)
+
+* [R plot resolution](http://stackoverflow.com/questions/8166931/plots-with-good-resolution-for-printing-and-screen-display)
+
+
+
